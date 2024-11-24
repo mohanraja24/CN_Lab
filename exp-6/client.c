@@ -1,51 +1,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <winsock2.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
-#define BUFFER_SIZE 1024
 
 int main() {
-    WSADATA wsa;
-    SOCKET sockfd;
-    struct sockaddr_in server_addr;
+    int sock = 0;
+    struct sockaddr_in serv_addr;
     int number;
     long result;
-    int addr_len = sizeof(server_addr);
 
-    // Initialize Winsock
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        printf("WSAStartup failed. Error Code: %d\n", WSAGetLastError());
+    // Creating socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\nSocket creation error\n");
         return -1;
     }
 
-    // Create socket
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET) {
-        printf("Socket creation failed. Error Code: %d\n", WSAGetLastError());
-        WSACleanup();
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported\n");
         return -1;
     }
 
-    memset(&server_addr, 0, sizeof(server_addr));
-
-    // Fill server information
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    // Connecting to the server
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed\n");
+        return -1;
+    }
 
     // Input number from user
     printf("Enter a number to calculate factorial: ");
     scanf("%d", &number);
 
-    // Send number to server
-    sendto(sockfd, (const char *)&number, sizeof(number), 0, (const struct sockaddr *)&server_addr, addr_len);
+    // Sending number to server
+    send(sock, &number, sizeof(number), 0);
 
-    // Receive result from server
-    recvfrom(sockfd, (char *)&result, sizeof(result), 0, (struct sockaddr *)&server_addr, &addr_len);
+    // Receiving result from server
+    read(sock, &result, sizeof(result));
     printf("Factorial of %d is: %ld\n", number, result);
 
-    closesocket(sockfd);
-    WSACleanup();
+    close(sock);
+
     return 0;
 }
