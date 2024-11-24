@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <winsock2.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
-#define BUFFER_SIZE 1024
 
 long factorial(int num) {
     long fact = 1;
@@ -15,56 +15,66 @@ long factorial(int num) {
 }
 
 int main() {
-    WSADATA wsa;
-    SOCKET sockfd;
-    struct sockaddr_in server_addr, client_addr;
-    int client_len = sizeof(client_addr);
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
     int number;
     long result;
 
-    // Initialize Winsock
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        printf("WSAStartup failed. Error Code: %d\n", WSAGetLastError());
-        return -1;
+    // Creating socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("Socket failed");
+        exit(EXIT_FAILURE);
     }
 
-    // Create socket
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET) {
-        printf("Socket creation failed. Error Code: %d\n", WSAGetLastError());
-        WSACleanup();
-        return -1;
+    // Set the SO_REUSEADDR option
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt");
+        close(server_fd);
+        exit(EXIT_FAILURE);
     }
 
-    // Fill server information
-    memset(&server_addr, 0, sizeof(server_addr));
-    memset(&client_addr, 0, sizeof(client_addr));
+    // Binding socket
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
-
-    // Bind the socket with the server address
-    if (bind(sockfd, (const struct sockaddr *)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        printf("Bind failed. Error Code: %d\n", WSAGetLastError());
-        closesocket(sockfd);
-        WSACleanup();
-        return -1;
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
     }
 
-    printf("UDP Server is waiting for a number...\n");
+    // Listening for incoming connections
+    if (listen(server_fd, 3) < 0) {
+        perror("Listen failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
 
-    // Receive number from client
-    recvfrom(sockfd, (char *)&number, sizeof(number), 0, (struct sockaddr *)&client_addr, &client_len);
+    printf("Server is waiting for a connection...\n");
+
+    // Accepting incoming connection
+    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+        perror("Accept failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Receiving number from client
+    read(new_socket, &number, sizeof(number));
     printf("Received number: %d\n", number);
 
-    // Calculate factorial
+    // Calculating factorial
     result = factorial(number);
 
-    // Send result back to client
-    sendto(sockfd, (const char *)&result, sizeof(result), 0, (struct sockaddr *)&client_addr, client_len);
+    // Sending result back to client
+    send(new_socket, &result, sizeof(result), 0);
     printf("Factorial of %d sent back to client: %ld\n", number, result);
 
-    closesocket(sockfd);
-    WSACleanup();
+    close(new_socket);
+    close(server_fd);
+
     return 0;
 }
